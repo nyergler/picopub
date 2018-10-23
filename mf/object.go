@@ -1,7 +1,4 @@
-//go:generate jsonenums -type=EntryType
-//go:generate stringer -type=EntryType
-
-package picopub
+package mf
 
 import (
 	"encoding/json"
