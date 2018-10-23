@@ -25,6 +25,11 @@ var (
 		Unknown: "Unknown",
 		Entry:   "Entry",
 	}
+
+	propHandlers = map[EntryType]func() interface{}{
+		Entry:   func() interface{} { return &EntryProps{} },
+		Unknown: func() interface{} { return new(map[string]NestedProperty) },
+	}
 )
 
 func FromString(s string) EntryType {
@@ -103,18 +108,37 @@ func (p Property) Object() *MicroformatObject {
 }
 
 type MicroformatObject struct {
-	Type       EntryType                 `json:"type"`
-	Properties map[string]NestedProperty `json:"properties"`
+	Type       EntryType   `json:"type"`
+	Properties interface{} `json:"properties"`
 }
 
 func (o *MicroformatObject) UnmarshalJSON(data []byte) error {
-	var r interface{}
-	err := json.Unmarshal(data, &r)
-	if err != nil {
+	var rawProps json.RawMessage
+	o.Properties = &rawProps
+
+	// unmarshal the wrapper
+	if err := json.Unmarshal(data, o); err != nil {
 		return err
 	}
 
-	return unmarshalMicroformat(r, o)
+	// unmarshal the properties
+	if propFunc, ok := propHandlers[o.Type]; ok {
+		props := propFunc()
+		if err := json.Unmarshal(rawProps, props); err != nil {
+			return err
+		}
+		o.Properties = props
+	} else {
+		// unknown entry type
+		props := propHandlers[Unknown]()
+		if err := unmarshalMicroformat(rawProps, props); err != nil {
+			return err
+		}
+		o.Properties = props
+	}
+
+	return nil
+	// return unmarshalMicroformat(o.Properties, o)
 }
 
 func ParseForm(f *url.Values, o *MicroformatObject) error {
